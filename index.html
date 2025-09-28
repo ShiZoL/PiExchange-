@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pi Coin Currency Converter (All Countries)</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background-color: #f9f9f9;
+    }
+
+    .search-container {
+      margin-top: 50px;
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 12px 20px;
+      margin-bottom: 15px;
+      box-sizing: border-box;
+      border: 2px solid #ccc;
+      border-radius: 5px;
+      font-size: 16px;
+    }
+
+    .button-group {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .button-group button {
+      flex: 1;
+      padding: 12px;
+      font-size: 16px;
+      border: none;
+      border-radius: 5px;
+      background-color: #4caf50;
+      color: white;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    .button-group button:hover {
+      background-color: #45a049;
+    }
+
+    table {
+      margin-top: 30px;
+      width: 100%;
+      max-width: 800px;
+      border-collapse: collapse;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      background-color: white;
+    }
+
+    th, td {
+      padding: 12px;
+      border: 1px solid #ddd;
+      text-align: center;
+    }
+
+    th {
+      background-color: #4caf50;
+      color: white;
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+
+    tr:nth-child(even) {
+      background-color: #f2f2f2;
+    }
+
+    .loading-message {
+      text-align: center;
+      padding: 20px;
+      font-size: 1.2em;
+      color: #555;
+    }
+
+    .error-message {
+      color: red;
+      font-weight: bold;
+    }
+
+    @media (max-width: 600px) {
+      .button-group {
+        flex-direction: column;
+      }
+
+      table, thead, tbody, th, td, tr {
+        font-size: 12px;
+      }
+
+      table {
+        border: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="search-container">
+    <h1>Pi Coin Converter</h1>
+    <input type="text" id="countryInput" placeholder="Search for a country..." />
+    <div class="button-group">
+      <button onclick="searchCountry()">Search</button>
+      <button onclick="viewAll()">View All</button>
+    </div>
+  </div>
+
+  <table id="countryTable">
+    <thead>
+      <tr>
+        <th>Country</th>
+        <th>Pi Coin</th>
+        <th>Currency</th>
+        <th>Rates (1 PI = Local Currency)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr id="loadingRow">
+        <td colspan="4" class="loading-message">Loading all country data... 🌍</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <script>
+    const EXCHANGE_RATE_API_KEY = "ca05e1d3b7ca4409c40379af";
+    let PI_COIN_USD_VALUE = 0;
+    let allCountryData = [];
+
+    async function fetchPiPrice() {
+      const url = 'https://api.coingecko.com/api/v3/simple/price?ids=pi-network&vs_currencies=usd';
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+        const price = data['pi-network']?.usd || 0.27;
+        PI_COIN_USD_VALUE = parseFloat(price);
+        return PI_COIN_USD_VALUE;
+      } catch (error) {
+        console.error("Failed to fetch Pi price. Using fallback $0.27.");
+        PI_COIN_USD_VALUE = 0.27;
+        return PI_COIN_USD_VALUE;
+      }
+    }
+
+    async function fetchCountryCurrencies() {
+      const url = 'https://restcountries.com/v3.1/all?fields=name,currencies';
+      try {
+        const response = await fetch(url);
+        const countries = await response.json();
+        const currencyMap = {};
+
+        countries.forEach(country => {
+          const countryName = country.name?.common || "N/A";
+          if (country.currencies) {
+            const currencyCode = Object.keys(country.currencies)[0];
+            if (currencyCode) {
+              currencyMap[countryName.toLowerCase()] = {
+                countryDisplay: countryName,
+                currencyCode: currencyCode
+              };
+            }
+          }
+        });
+        return currencyMap;
+      } catch (error) {
+        console.error("Error fetching country currency data:", error);
+        return null;
+      }
+    }
+
+    async function fetchExchangeRates() {
+      const url = `https://v6.exchangerate-api.com/v6/${EXCHANGE_RATE_API_KEY}/latest/USD`;
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+        return data.result === "success" ? data.conversion_rates : null;
+      } catch (error) {
+        console.error("Error fetching exchange rates:", error);
+        return null;
+      }
+    }
+
+    async function fetchAllData() {
+      const loadingRow = document.getElementById("loadingRow");
+      loadingRow.innerHTML = `
+        <td colspan="4">
+          <div style="width: 100%; background-color: #eee; border-radius: 5px; overflow: hidden; height: 20px;">
+            <div id="progressBar" style="width: 0%; height: 100%; background-color: #4caf50; transition: width 0.4s;"></div>
+          </div>
+        </td>
+      `;
+
+      const progressBar = document.getElementById("progressBar");
+      let progress = 0;
+      const progressInterval = setInterval(() => {
+        if (progress >= 90) {
+          clearInterval(progressInterval);
+        } else {
+          progress += 1;
+          progressBar.style.width = progress + "%";
+        }
+      }, 30);
+
+      const piPrice = await fetchPiPrice();
+      const [countryMap, fiatRates] = await Promise.all([
+        fetchCountryCurrencies(),
+        fetchExchangeRates()
+      ]);
+
+      if (!countryMap || !fiatRates) {
+        clearInterval(progressInterval);
+        loadingRow.innerHTML = '<td colspan="4" class="loading-message error-message">Error loading data. Check API or internet connection.</td>';
+        return;
+      }
+
+      const compiledData = [];
+      for (const key in countryMap) {
+        const item = countryMap[key];
+        const currencyCode = item.currencyCode;
+        let rate = "N/A";
+
+        if (fiatRates[currencyCode] && piPrice > 0) {
+          const usdToLocal = fiatRates[currencyCode];
+          rate = (usdToLocal * piPrice).toFixed(4);
+        }
+
+        compiledData.push({
+          country: item.countryDisplay,
+          currencyCode: currencyCode,
+          rate: rate
+        });
+      }
+
+      allCountryData = compiledData.sort((a, b) => a.country.localeCompare(b.country));
+
+      // Finish progress bar and remove it
+      clearInterval(progressInterval);
+      if (progressBar) progressBar.style.width = "100%";
+      setTimeout(() => {
+        if (loadingRow) loadingRow.innerHTML = "";
+      }, 500);
+
+      updateTable(allCountryData);
+    }
+
+    function updateTable(data, filter = "") {
+      const tbody = document.querySelector("#countryTable tbody");
+      tbody.innerHTML = "";
+      const lowerFilter = filter.toLowerCase();
+      let rowCount = 0;
+
+      data.forEach(item => {
+        if (filter && !item.country.toLowerCase().includes(lowerFilter)) return;
+
+        const row = tbody.insertRow();
+        row.insertCell().textContent = item.country;
+        row.insertCell().textContent = "1 PI";
+        row.insertCell().textContent = item.currencyCode;
+        row.insertCell().textContent = item.rate === "N/A" ? "N/A" : `${item.rate} ${item.currencyCode}`;
+        rowCount++;
+      });
+
+      if (rowCount === 0) {
+        const emptyRow = tbody.insertRow();
+        emptyRow.innerHTML = '<td colspan="4" class="loading-message">No countries match your search.</td>';
+      }
+    }
+
+    function searchCountry() {
+      const input = document.getElementById("countryInput").value;
+      if (allCountryData.length === 0) {
+        alert("Data is still loading. Please wait.");
+        return;
+      }
+      updateTable(allCountryData, input);
+    }
+
+    function viewAll() {
+      document.getElementById("countryInput").value = "";
+      if (allCountryData.length > 0) {
+        updateTable(allCountryData);
+      } else {
+        fetchAllData();
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", fetchAllData);
+  </script>
+</body>
+</html>
